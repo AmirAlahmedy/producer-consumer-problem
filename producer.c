@@ -67,25 +67,38 @@ void up(int sem)
     }
 }
 
+int shmid, shmid2, shmid3, msgqid1, msgqid2;
+
+void handler(int signum)
+{
+    shmctl(shmid, IPC_RMID, (struct shmid_ds *)0);
+    shmctl(shmid2, IPC_RMID, (struct shmid_ds *)0);
+    shmctl(shmid3, IPC_RMID, (struct shmid_ds *)0);
+    msgctl(msgqid1, IPC_RMID, (struct msqid_ds *)0);
+    msgctl(msgqid2, IPC_RMID, (struct msqid_ds *)0);
+    raise(SIGKILL);
+}
+
 int main()
 {
+    signal(SIGINT, handler);
     int buffsz;
     printf("Enter buffer size: ");
     scanf("%d", &buffsz);
 
-    int shmid = shmget(120, sizeof(int) * buffsz, IPC_CREAT | 0644);
+    shmid = shmget(120, sizeof(int) * buffsz, IPC_CREAT | 0644);
     if (shmid == -1)
     {
         perror("Error in creating shm in producer");
         exit(-1);
     }
-    int shmid2 = shmget(121, sizeof(int), IPC_CREAT | 0644);
+    shmid2 = shmget(121, sizeof(int), IPC_CREAT | 0644);
     if (shmid2 == -1)
     {
         perror("Error in creating shm in producer");
         exit(-1);
     }
-    int shmid3 = shmget(122, sizeof(int), IPC_CREAT | 0644);
+    shmid3 = shmget(122, sizeof(int), IPC_CREAT | 0644);
     if (shmid3 == -1)
     {
         perror("Error in creating shm3 in producer");
@@ -93,8 +106,6 @@ int main()
     }
     int *buff = (int *)shmat(shmid, (void *)0, 0);
     int *num = (int *)shmat(shmid2, (void *)0, 0);
-    
-    
 
     union Semun semun1, semun2;
 
@@ -121,8 +132,8 @@ int main()
     myemsg.empty = 1;
     myfmsg.full = 0;
 
-    int msgqid1 = msgget(614, IPC_CREAT | 0644);
-    int msgqid2 = msgget(615, IPC_CREAT | 0644);
+    msgqid1 = msgget(614, IPC_CREAT | 0644);
+    msgqid2 = msgget(615, IPC_CREAT | 0644);
 
     int *sz = (int *)shmat(shmid3, (void *)0, 0);
     up(sem3);
@@ -130,7 +141,10 @@ int main()
     shmdt(sz);
 
     up(sem2);
-    for (int i = 1; i <= 20; i++)
+    // for (int i = 1; i <= 20; i++)
+    // {
+    int i = 1;
+    while (1)
     {
         down(sem1);
 
@@ -143,38 +157,44 @@ int main()
         if (myfmsg.full)
         {
             printf("Buffer is now full, producer will wait for the consumer to consume an item\n");
+            up(sem1);
             int rec_val = msgrcv(msgqid2, &myfmsg, sizeof(myfmsg.full), 9, !IPC_NOWAIT);
+            down(sem1);
             if (rec_val == -1)
                 fprintf(stderr, "Error while receiveing not full from consumer\n");
         }
 
         /* if executing here, buffer not full so add element */
         buff[add] = i;
-        printf("Producer produced item (%d) in position (%d)\n ", add, i);
+        printf("Producer produced item (%d) in position (%d)\n ", i, add);
         add = (add + 1) % buffsz;
         printf("Prooducer index is now (%d)\n", add);
         (*num)++;
         printf("The count of elements in the buffer is (%d) \n", *num);
+        for (int i = 0; i < buffsz; i++)
+            printf("%d ", buff[i]);
+        printf("\n");
         if (*num == buffsz)
             myfmsg.full = 1;
 
-        if (myemsg.empty)
+        if (*num == 1)
         {
             myemsg.empty = 0;
             myemsg.mtype = 7;
             printf("Producer is waking up the consumer\n");
             int send_val = msgsnd(msgqid1, &myemsg, sizeof(myemsg.empty), !IPC_NOWAIT);
+            printf("Sent a message\n");
             if (send_val == -1)
                 fprintf(stderr, "Error while sending not empty to consumer\n");
         }
         up(sem1);
         printf("producer: inserted %d\n", i);
         fflush(stdout);
+        sleep(1);
+        i++;
     }
     printf("producer quiting\n");
     fflush(stdout);
-    shmctl(shmid, IPC_RMID, (struct shmid_ds *)0);
-    // shmctl(shmid2, IPC_RMID, (struct shmid_ds *)0);
-    // shmctl(shmid3, IPC_RMID, (struct shmid_ds *)0);
+
     return 0;
 }

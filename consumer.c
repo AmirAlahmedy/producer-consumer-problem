@@ -119,7 +119,9 @@ int main()
         if (myemsg.empty)
         {
             printf("Buffer is empty, consumer is waiting for an item to be produced\n");
+            up(sem1);
             int rec_val = msgrcv(msgqid1, &myemsg, sizeof(myemsg.empty), 7, !IPC_NOWAIT);
+            down(sem1);
             if (rec_val == -1)
                 fprintf(stderr, "Error while receiveing not empty from producer\n");
         }
@@ -133,10 +135,14 @@ int main()
         /* if executing here, buffer not empty so remove element */
         i = buff[rem];
         printf("Item (%d) at position (%d), was consumed\n", i, rem);
+        buff[rem] = 0;
         rem = (rem + 1) % buffsz;
         printf("Consumer index is now (%d)\n", rem);
-        (*num)--;
         printf("The count of elements in the buffer is (%d)\n", *num);
+        (*num)--;
+        for (int i = 0; i < buffsz; i++)
+            printf("%d ", buff[i]);
+        printf("\n");
 
         if (*num == 0)
             myemsg.empty = 1;
@@ -155,6 +161,7 @@ int main()
 
         printf("Consume value %d\n", i);
         fflush(stdout);
+        sleep(1);
     }
 
     return 0;
